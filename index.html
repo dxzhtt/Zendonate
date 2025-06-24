@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zenchain Donation System</title>
+    <style>
+        body {
+            background-image: url('pict.jpg'); 
+            background-size: cover;
+            background-position: center;
+            font-family: Arial, sans-serif;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        .container {
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 600px;
+            margin: auto;
+        }
+        input, button {
+            padding: 10px;
+            margin: 10px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        #donorsList, #totalDonations {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Zenchain Donation System</h1>
+        <p>Donate using ZTC on Zenchain</p>
+        <input type="number" id="donationAmount" placeholder="Amount in ZTC (e.g., 0.01)" step="0.01">
+        <button onclick="donate()">Donate Now</button>
+        <button onclick="getTotalDonations()">View Total Donations</button>
+        <button onclick="getDonors()">View Donors List</button>
+        <p id="totalDonations"></p>
+        <div id="donorsList"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.3/dist/web3.min.js"></script>
+    <script>
+        // Configure Web3 for Zenchain
+        const web3 = new Web3('https://rpc.zenchain.io'); // Zenchain RPC URL
+        const contractAddress = '0xc0f8c56cea9d9ae6f3b3a1e6e157881dc63ad24c'; // Deployed contract address
+        const contractABI = [
+            {
+                "inputs": [],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+            },
+            {
+                "inputs": [],
+                "name": "donate",
+                "outputs": [],
+                "stateMutability": "payable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getDonors",
+                "outputs": [
+                    {
+                        "internalType": "address[]",
+                        "name": "",
+                        "type": "address[]"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "_donor",
+                        "type": "address"
+                    }
+                ],
+                "name": "getDonation",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "owner",
+                "outputs": [
+                    {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "totalDonations",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "withdraw",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                    }
+                ],
+                "name": "donations",
+                "outputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "uint256",
+                        "name": "",
+                        "type": "uint256"
+                    }
+                ],
+                "name": "donors",
+                "outputs": [
+                    {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
+        const contract = new web3.eth.Contract(contractABI, contractAddress);
+
+        async function donate() {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    const amount = document.getElementById('donationAmount').value;
+                    if (amount <= 0) {
+                        alert('Please enter a valid donation amount!');
+                        return;
+                    }
+                    const weiValue = web3.utils.toWei(amount, 'ether');
+                    await contract.methods.donate().send({ from: accounts[0], value: weiValue })
+                        .on('receipt', () => alert('Donation successful!'));
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            } else {
+                alert('Please install MetaMask!');
+            }
+        }
+
+        async function getTotalDonations() {
+            const total = await contract.methods.totalDonations().call();
+            document.getElementById('totalDonations').innerText = `Total Donations: ${web3.utils.fromWei(total, 'ether')} ZTC`;
+        }
+
+        async function getDonors() {
+            const donors = await contract.methods.getDonors().call();
+            let donorsList = 'Donors:<br>';
+            for (let donor of donors) {
+                const amount = await contract.methods.getDonation(donor).call();
+                donorsList += `${donor}: ${web3.utils.fromWei(amount, 'ether')} ZTC<br>`;
+            }
+            document.getElementById('donorsList').innerHTML = donorsList;
+        }
+    </script>
+</body>
+</html>
