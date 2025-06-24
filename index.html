@@ -6,7 +6,7 @@
     <title>Zenchain Donation System</title>
     <style>
         body {
-            background-image: url('pict.jpg'); 
+            background-image: url('pict.jpg');
             background-size: cover;
             background-position: center;
             font-family: Arial, sans-serif;
@@ -35,7 +35,7 @@
         button:hover {
             background-color: #218838;
         }
-        #donorsList, #totalDonations {
+        #donorsList, #totalDonations, #status {
             margin-top: 20px;
             font-size: 18px;
         }
@@ -45,6 +45,7 @@
     <div class="container">
         <h1>Zenchain Donation System</h1>
         <p>Donate using ZTC on Zenchain</p>
+        <p id="status">Status: Not connected</p>
         <input type="number" id="donationAmount" placeholder="Amount in ZTC (e.g., 0.01)" step="0.01">
         <button onclick="donate()">Donate Now</button>
         <button onclick="getTotalDonations()">View Total Donations</button>
@@ -53,11 +54,11 @@
         <div id="donorsList"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.3/dist/web3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
     <script>
-        // Configure Web3 for Zenchain
-        const web3 = new Web3('https://rpc.zenchain.io'); // Zenchain RPC URL
-        const contractAddress = '0xc0f8c56cea9d9ae6f3b3a1e6e157881dc63ad24c'; // Deployed contract address
+        // Initialize Web3
+        const web3 = new Web3('https://rpc.zenchain.io');
+        const contractAddress = '0xc0f8c56cea9d9ae6f3b3a1e6e157881dc63ad24c';
         const contractABI = [
             {
                 "inputs": [],
@@ -177,39 +178,94 @@
         ];
         const contract = new web3.eth.Contract(contractABI, contractAddress);
 
-        async function donate() {
+        // Auto-connect MetaMask and switch to Zenchain
+        window.addEventListener('load', async () => {
             if (typeof window.ethereum !== 'undefined') {
                 try {
-                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    const amount = document.getElementById('donationAmount').value;
-                    if (amount <= 0) {
-                        alert('Please enter a valid donation amount!');
-                        return;
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                    if (chainId !== '0x1fc4') { // Chain ID 8108 in hex
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_switchEthereumChain',
+                                params: [{ chainId: '0x1fc4' }],
+                            });
+                        } catch (switchError) {
+                            // If chain not added, add it
+                            if (switchError.code === 4902) {
+                                await window.ethereum.request({
+                                    method: 'wallet_addEthereumChain',
+                                    params: [{
+                                        chainId: '0x1fc4',
+                                        chainName: 'Zenchain Testnet',
+                                        nativeCurrency: {
+                                            name: 'ZTC',
+                                            symbol: 'ZTC',
+                                            decimals: 18
+                                        },
+                                        rpcUrls: ['https://rpc.zenchain.io'],
+                                        blockExplorerUrls: ['https://explorer.zenchain.io']
+                                    }],
+                                });
+                            } else {
+                                throw switchError;
+                            }
+                        }
                     }
-                    const weiValue = web3.utils.toWei(amount, 'ether');
-                    await contract.methods.donate().send({ from: accounts[0], value: weiValue })
-                        .on('receipt', () => alert('Donation successful!'));
+                    document.getElementById('status').innerText = 'Status: Connected to Zenchain';
                 } catch (error) {
-                    alert('Error: ' + error.message);
+                    document.getElementById('status').innerText = `Status: Error - ${error.message}`;
                 }
             } else {
-                alert('Please install MetaMask!');
+                document.getElementById('status').innerText = 'Status: Please install MetaMask!';
+            }
+        });
+
+        async function donate() {
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const amount = document.getElementById('donationAmount').value;
+                if (amount <= 0) {
+                    alert('Please enter a valid donation amount!');
+                    return;
+                }
+                const weiValue = web3.utils.toWei(amount, 'ether');
+                await contract.methods.donate().send({ from: accounts[0], value: weiValue })
+                    .on('receipt', () => {
+                        alert('Donation successful!');
+                        document.getElementById('status').innerText = 'Status: Donation successful';
+                    });
+            } catch (error) {
+                alert(`Donation failed: ${error.message}`);
+                document.getElementById('status').innerText = `Status: Donation failed - ${error.message}`;
             }
         }
 
         async function getTotalDonations() {
-            const total = await contract.methods.totalDonations().call();
-            document.getElementById('totalDonations').innerText = `Total Donations: ${web3.utils.fromWei(total, 'ether')} ZTC`;
+            try {
+                const total = await contract.methods.totalDonations().call();
+                document.getElementById('totalDonations').innerText = `Total Donations: ${web3.utils.fromWei(total, 'ether')} ZTC`;
+                document.getElementById('status').innerText = 'Status: Total donations fetched';
+            } catch (error) {
+                alert(`Error fetching total donations: ${error.message}`);
+                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
+            }
         }
 
         async function getDonors() {
-            const donors = await contract.methods.getDonors().call();
-            let donorsList = 'Donors:<br>';
-            for (let donor of donors) {
-                const amount = await contract.methods.getDonation(donor).call();
-                donorsList += `${donor}: ${web3.utils.fromWei(amount, 'ether')} ZTC<br>`;
+            try {
+                const donors = await contract.methods.getDonors().call();
+                let donorsList = 'Donors:<br>';
+                for (let donor of donors) {
+                    const amount = await contract.methods.getDonation(donor).call();
+                    donorsList += `${donor}: ${web3.utils.fromWei(amount, 'ether')} ZTC<br>`;
+                }
+                document.getElementById('donorsList').innerHTML = donorsList;
+                document.getElementById('status').innerText = 'Status: Donors list fetched';
+            } catch (error) {
+                alert(`Error fetching donors: ${error.message}`);
+                document.getElementById('status').innerText = `Status: Error - ${error.message}`;
             }
-            document.getElementById('donorsList').innerHTML = donorsList;
         }
     </script>
 </body>
